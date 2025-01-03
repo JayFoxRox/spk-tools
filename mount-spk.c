@@ -186,6 +186,9 @@ int main(int argc, char *argv[]) {
     printf("Mounting..\n");
   }
 
+  // Force single-thread to avoid seeking while still reading in callback
+  assert(fuse_opt_add_arg(&args, "-s") == 0);
+
   return fuse_main(args.argc, args.argv, &spk_fuse_oper, NULL);
 }
 
