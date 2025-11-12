@@ -50,42 +50,42 @@ void dumpFile(FILE* f, off_t strs, off_t sdat, size_t length, mode_t permissions
 }
 #endif
 
-static void extractFile(FILE* f, char* path, SpkFile* file) {
+static void extractFile(char* path, File* file) {
   //FIXME
   printf("Visiting '%s%s'\n", path, file->name);
-
-  fseek(f, file->sdat_offset, SEEK_SET);
 
   char out_path_buffer[PATH_MAX];
   sprintf(out_path_buffer, "%s%s", path, file->name);
   mkdir_p(out_path_buffer);
   FILE* out = fopen(out_path_buffer, "wb");
-  size_t chunk_size = 4 * 1024 * 1024;
-  uint8_t* chunk = malloc(chunk_size);
-  size_t length = file->size;
-  while (length > 0) {   
-    if (length < chunk_size) {
-      chunk_size = length;
-    }   
-    fread(chunk, 1, chunk_size, f);
+  size_t chunk_size = 2 * 1024 * 1024;
+  uint8_t* chunk = (uint8_t*)malloc(chunk_size);
+  size_t size = file->size;
+  off_t offset = 0;
+  while (size > 0) {   
+    if (size < chunk_size) {
+      chunk_size = size;
+    }
+    file->read(chunk, offset, chunk_size);
     fwrite(chunk, 1, chunk_size, out);
-    length -= chunk_size;
+    size -= chunk_size;
+    offset += chunk_size;
   }
   free(chunk);
   fclose(out);
 }
 
-static void extractFolder(FILE* f, char* path, SpkFolder* folder) {
-  char* subpath = malloc(strlen(path) + strlen(folder->name) + 1 + 1);
+static void extractFolder(const char* path, Folder* folder) {
+  char* subpath = (char*)malloc(strlen(path) + strlen(folder->name) + 1 + 1);
   strcpy(subpath, path);
   strcat(subpath, folder->name);
   strcat(subpath, "/");
   printf("Visiting '%s'\n", subpath);
   for(int i = 0; i < folder->folder_count; i++) {
-    extractFolder(f, subpath, &folder->folders[i]);
+    extractFolder(subpath, folder->folders[i]);
   }
   for(int i = 0; i < folder->file_count; i++) {
-    extractFile(f, subpath, &folder->files[i]);
+    extractFile(subpath, folder->files[i]);
   }
   free(subpath);
 }
@@ -111,25 +111,12 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  printf("Note that this tool only extracts the spike packages.\n"
-         "Older SPK files also include a tar.gz at the file start.\n"
-         "Use the UNIX `gunzip` & `tar` utility to extract those.\n");
-
-  for(int i = 0; i < spk->package_count; i++) {
-    SpkPackage* package = &spk->packages[i];
-    extractFolder(f, "./", package->root_folder);
-  }
-
-  SpkFolder* folder = spk->packages[0].root_folder;
-  for(int i = 0; i < folder->folder_count; i++) {
-    printf("folder in root is '%s'\n", folder->folders[i].name);
-  }
-
-  for(int i = 0; i < folder->file_count; i++) {
-    printf("file in root is '%s'\n", folder->files[i].name);
-  }
-
+  Folder* root_folder = splitSpkIntoFoldersFromFILE(spk, f);
+  extractFolder("./", root_folder);
+  freeFolders(root_folder);
 
   spk_free(spk);
+
+
   return 0;
 }
